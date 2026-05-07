@@ -219,11 +219,6 @@
                 hoveredTaxonId = null; // Clear hover state so selection takes over visually
                 updateLegendStyles();
                 debounceLoadMapData(selectedTaxonId, selectedTaxonName);
-                
-                // Auto-collapse on mobile screens after selecting a bird to reveal the map
-                if (window.innerWidth < 640 && isPanelExpanded) {
-                    ui.panelHeader.click();
-                }
             });
         }
 

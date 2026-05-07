@@ -434,6 +434,11 @@
             manifestLink.href = URL.createObjectURL(manifestBlob);
             document.head.appendChild(manifestLink);
 
+            // Default to the current month dynamically
+            const currentMonth = new Date().getMonth() + 1; // 0-indexed, so add 1
+            ui.monthSelect.value = currentMonth.toString();
+            dateParams = `&month=${currentMonth}`;
+
             // Attach listener to the static "All Birds" item
             attachLegendListener(document.querySelector('.legend-item[data-id="3"]'));
             

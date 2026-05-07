@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NYC Wildlife Heatmap</title>
+    
+    <!-- PWA & iOS Web App Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Where bird?">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0b0f19">
+    
+    <!-- Apple Touch Icon (Blue rounded square with bird emoji) -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232563eb%22/><text x=%2250%22 y=%2250%22 font-size=%2260%22 text-anchor=%22middle%22 dy=%22.35em%22>🐦</text></svg>">
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS for Mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Leaflet.heat Plugin -->
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background: #0b0f19; overflow: hidden; }
+        #map { width: 100vw; height: 100vh; z-index: 0; }
+        
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        /* Custom Scrollbar for Legend */
+        #legendList::-webkit-scrollbar { width: 6px; }
+        #legendList::-webkit-scrollbar-track { background: transparent; }
+        #legendList::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+        #legendList::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="text-white font-sans antialiased">
+
+    <!-- The Map Container -->
+    <div id="map" class="absolute inset-0"></div>
+
+    <!-- Main Control Panel (Legend & Time Filter) -->
+    <div class="absolute top-2 left-2 right-2 sm:top-4 sm:left-4 sm:right-auto sm:w-80 z-[1000] glass-panel border border-gray-700/50 p-3 sm:p-5 rounded-xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[40vh] sm:max-h-[90vh] transition-all">
+        
+        <!-- Header (Always visible & Clickable) -->
+        <div id="panelHeader" class="flex items-center justify-between flex-shrink-0 cursor-pointer select-none">
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="p-1.5 sm:p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1Z"></path><path d="M12 11h4"></path><path d="M12 16h4"></path><path d="M8 11h.01"></path><path d="M8 16h.01"></path></svg>
+                </div>
+                <h1 class="text-lg sm:text-xl font-bold tracking-tight">Where bird?</h1>
+            </div>
+            <button class="p-1 text-gray-400 hover:text-white transition-colors">
+                <svg id="toggleIcon" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 transform transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+            </button>
+        </div>
+        
+        <!-- Collapsible Content -->
+        <div id="panelContent" class="flex flex-col flex-1 min-h-0 mt-2 sm:mt-4">
+            <p class="text-[10px] sm:text-sm text-gray-400 mb-3 sm:mb-4 leading-relaxed flex-shrink-0">Hover to preview. Click to select. Scroll for more.</p>
+
+            <!-- Time Filter -->
+            <div class="flex items-center justify-between mb-3 flex-shrink-0 bg-gray-800/50 p-2 rounded-lg border border-gray-700/50">
+                <label class="text-[10px] sm:text-xs uppercase tracking-wider text-gray-400 font-semibold">Time of Year</label>
+                <select id="monthSelect" class="bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs sm:text-sm text-white outline-none focus:border-blue-500 transition-colors cursor-pointer min-w-[100px]">
+                    <option value="">All Year</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+            </div>
+        
+            <!-- Species Legend (Scrollable) -->
+            <div class="flex-1 overflow-hidden flex flex-col min-h-0">
+                <label class="block text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 font-semibold mb-1.5 flex-shrink-0">Species Legend</label>
+                
+                <div id="legendList" class="space-y-1 sm:space-y-1.5 overflow-y-auto pr-1 flex-1 pb-2 sm:pb-4">
+                    <!-- All Birds (Static Base Option) -->
+                    <div class="legend-item cursor-pointer p-1.5 sm:p-2 rounded-lg border border-transparent transition-all flex items-center gap-2 sm:gap-3" data-id="3" data-name="All Birds">
+                        <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-blue-500/20 border border-blue-400/50 flex items-center justify-center text-sm sm:text-lg">🐦</div>
+                        <div class="flex-1 text-xs sm:text-sm font-medium">All Birds</div>
+                    </div>
+                    
+                    <!-- Dynamic List Injected Here -->
+                    <div id="dynamicLegendList" class="space-y-1 sm:space-y-1.5 mt-1 sm:mt-1.5"></div>
+                    
+                    <!-- Loading Indicator -->
+                    <div id="scrollLoader" class="text-center py-3 text-blue-400 text-xs animate-pulse font-medium hidden">
+                        Fetching more species...
+                    </div>
+                </div>
+            </div>
+
+        <!-- Status / Stats -->
+        <div id="statsPanel" class="mt-2 sm:mt-4 pt-2 sm:pt-4 border-t border-gray-700/50 flex-shrink-0">
+            <div class="flex justify-between items-center text-xs sm:text-sm">
+                <span class="text-gray-400">Map Data Points:</span>
+                <span id="obsCount" class="font-mono text-blue-400 font-bold bg-blue-500/10 py-0.5 sm:py-1 px-1.5 sm:px-2 rounded">0</span>
+            </div>
+        </div>
+
+        <!-- Error Banner -->
+        <div id="errorBanner" class="hidden mt-2 sm:mt-4 bg-red-900/30 border border-red-800/50 text-red-300 text-xs p-2 sm:p-3 rounded-lg leading-relaxed flex-shrink-0"></div>
+        
+        </div> <!-- End of Collapsible Content -->
+    </div>
+
+    <script>
+        // --- 1. Map Configuration ---
+        const NYC_BOUNDS = { nelat: 40.917577, nelng: -73.700272, swlat: 40.477399, swlng: -74.25909 };
+
+        const map = L.map('map', { zoomControl: false }).setView([40.7128, -74.0060], 11);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap | &copy; CARTO',
+            subdomains: 'abcd', maxZoom: 19
+        }).addTo(map);
+
+        // --- 2. State Management ---
+        let heatLayer = null;
+        let currentPoints = [];
+        let dataCache = {}; // Caches heatmap data for rapid switching
+        
+        // Selection vs Focus
+        let selectedTaxonId = '3';
+        let selectedTaxonName = 'All Birds';
+        let hoveredTaxonId = null; 
+        
+        // Pagination & Filters
+        let legendPage = 1;
+        let isFetchingLegend = false;
+        let hasMoreLegend = true;
+        let dateParams = ''; // Stores &month=...
+        let mapUpdateTimer = null;
+
+        const ui = {
+            panelHeader: document.getElementById('panelHeader'),
+            panelContent: document.getElementById('panelContent'),
+            toggleIcon: document.getElementById('toggleIcon'),
+            legendList: document.getElementById('legendList'),
+            dynamicLegendList: document.getElementById('dynamicLegendList'),
+            scrollLoader: document.getElementById('scrollLoader'),
+            obsCount: document.getElementById('obsCount'),
+            errorBanner: document.getElementById('errorBanner'),
+            monthSelect: document.getElementById('monthSelect')
+        };
+
+        // --- 3. UI Updates & Interactions ---
+        
+        // Toggle Panel
+        let isPanelExpanded = true;
+        ui.panelHeader.addEventListener('click', () => {
+            isPanelExpanded = !isPanelExpanded;
+            if (isPanelExpanded) {
+                ui.panelContent.classList.remove('hidden');
+                ui.panelContent.classList.add('flex');
+                ui.toggleIcon.classList.remove('rotate-180');
+            } else {
+                ui.panelContent.classList.add('hidden');
+                ui.panelContent.classList.remove('flex');
+                ui.toggleIcon.classList.add('rotate-180');
+            }
+        });
+
+        // Visually update the legend to show what is Selected vs Focused
+        function updateLegendStyles() {
+            document.querySelectorAll('.legend-item').forEach(el => {
+                const id = el.getAttribute('data-id');
+                
+                // Reset styling
+                el.classList.remove('bg-blue-600/40', 'border-blue-500', 'bg-gray-700/50', 'border-gray-500');
+                el.classList.add('border-transparent');
+
+                // Apply Selection OR Focus
+                if (id === selectedTaxonId) {
+                    el.classList.remove('border-transparent');
+                    el.classList.add('bg-blue-600/40', 'border-blue-500'); // Strong blue for selection
+                } else if (id === hoveredTaxonId) {
+                    el.classList.remove('border-transparent');
+                    el.classList.add('bg-gray-700/50', 'border-gray-500'); // Subtle gray for hover focus
+                }
+            });
+        }
+
+        // Attach mouse events to a legend item
+        function attachLegendListener(item) {
+            const id = item.getAttribute('data-id');
+            const name = item.getAttribute('data-name');
+
+            // Hover: Focus this bird temporarily
+            item.addEventListener('mouseenter', () => {
+                hoveredTaxonId = id;
+                updateLegendStyles();
+                debounceLoadMapData(id, name);
+            });
+
+            // Click/Tap: Lock this bird in as the selection
+            item.addEventListener('click', () => {
+                selectedTaxonId = id;
+                selectedTaxonName = name;
+                hoveredTaxonId = null; // Clear hover state so selection takes over visually
+                updateLegendStyles();
+                debounceLoadMapData(selectedTaxonId, selectedTaxonName);
+                
+                // Auto-collapse on mobile screens after selecting a bird to reveal the map
+                if (window.innerWidth < 640 && isPanelExpanded) {
+                    ui.panelHeader.click();
+                }
+            });
+        }
+
+        // When mouse leaves the entire legend container, revert map to the Selected bird
+        ui.legendList.addEventListener('mouseleave', () => {
+            if (hoveredTaxonId !== null) {
+                hoveredTaxonId = null;
+                updateLegendStyles();
+                debounceLoadMapData(selectedTaxonId, selectedTaxonName);
+            }
+        });
+
+        // Infinite Scroll trigger
+        ui.legendList.addEventListener('scroll', () => {
+            if (!isFetchingLegend && hasMoreLegend) {
+                // If scrolled within 50px of the bottom
+                if (ui.legendList.scrollTop + ui.legendList.clientHeight >= ui.legendList.scrollHeight - 50) {
+                    fetchTopBirds(legendPage + 1);
+                }
+            }
+        });
+
+        // Trigger updates instantly when the month changes
+        ui.monthSelect.addEventListener('change', () => {
+            const month = ui.monthSelect.value;
+            
+            dateParams = '';
+            if (month) dateParams += `&month=${month}`;
+
+            // Because dates changed, the entire dataset has changed.
+            dataCache = {}; // Flush cache
+            
+            // Rebuild legend from page 1
+            legendPage = 1;
+            hasMoreLegend = true;
+            ui.dynamicLegendList.innerHTML = '';
+            
+            // Restart data fetching
+            fetchTopBirds(1);
+            debounceLoadMapData(selectedTaxonId, selectedTaxonName);
+        });
+
+        // --- 4. Data Fetching: Legend & Map ---
+
+        // Fetch the list of species for the legend
+        async function fetchTopBirds(page = 1) {
+            isFetchingLegend = true;
+            legendPage = page;
+            ui.scrollLoader.classList.remove('hidden');
+
+            try {
+                // Fetch 50 species per page
+                const url = `https://api.inaturalist.org/v1/observations/species_counts?taxon_id=3&nelat=${NYC_BOUNDS.nelat}&nelng=${NYC_BOUNDS.nelng}&swlat=${NYC_BOUNDS.swlat}&swlng=${NYC_BOUNDS.swlng}&quality_grade=research&per_page=50&page=${page}${dateParams}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.results.length === 0) {
+                    hasMoreLegend = false;
+                } else {
+                    let html = '';
+                    data.results.forEach(item => {
+                        const taxon = item.taxon;
+                        const img = taxon.default_photo ? taxon.default_photo.square_url : '';
+                        const name = taxon.preferred_common_name || taxon.name;
+                        
+                        html += `
+                            <div class="legend-item cursor-pointer p-1.5 sm:p-2 rounded-lg border border-transparent transition-all flex items-center gap-2 sm:gap-3" data-id="${taxon.id}" data-name="${name}">
+                                ${img ? `<img src="${img}" class="w-6 h-6 sm:w-8 sm:h-8 rounded-full object-cover border border-gray-600 flex-shrink-0">` : `<div class="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-700 border border-gray-600 flex-shrink-0"></div>`}
+                                <div class="flex-1 flex justify-between items-center min-w-0">
+                                    <div class="text-xs sm:text-sm font-medium truncate pr-2">${name}</div>
+                                    <div class="text-[10px] sm:text-xs text-gray-500 font-mono flex-shrink-0">${item.count.toLocaleString()}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    ui.dynamicLegendList.insertAdjacentHTML('beforeend', html);
+                    
+                    // Re-attach listeners to newly added items
+                    document.querySelectorAll('#dynamicLegendList .legend-item').forEach(el => {
+                        // Avoid double-attaching by checking if we already modified it
+                        if (!el.dataset.listenerAttached) {
+                            attachLegendListener(el);
+                            el.dataset.listenerAttached = "true";
+                        }
+                    });
+                }
+            } catch(e) {
+                console.error("Legend fetch error:", e);
+                hasMoreLegend = false;
+            } finally {
+                isFetchingLegend = false;
+                ui.scrollLoader.classList.add('hidden');
+                updateLegendStyles(); // Ensure current selection looks correct
+            }
+        }
+
+        // Debounce to prevent spamming map renders while scrolling/hovering quickly
+        function debounceLoadMapData(taxonId, taxonName) {
+            clearTimeout(mapUpdateTimer);
+            mapUpdateTimer = setTimeout(() => {
+                loadMapData(taxonId, taxonName);
+            }, 250);
+        }
+
+        // Fetch spatial points for the heatmap
+        async function loadMapData(taxonId, taxonName) {
+            // Determine whose data we are currently trying to show
+            const targetId = hoveredTaxonId !== null ? hoveredTaxonId : selectedTaxonId;
+            
+            // Abort if this function call is for a stale ID (because of async delays)
+            if (taxonId !== targetId) return;
+
+            ui.obsCount.innerHTML = `<span class="text-gray-400 text-xs italic animate-pulse">Fetching...</span>`;
+            ui.errorBanner.classList.add('hidden');
+            
+            // Create a unique cache key that includes dates
+            const cacheKey = `${taxonId}_${dateParams}`;
+
+            // Fast cache hit
+            if (dataCache[cacheKey]) {
+                currentPoints = dataCache[cacheKey];
+                renderHeatmap();
+                ui.obsCount.innerText = currentPoints.length.toLocaleString();
+                return;
+            }
+
+            try {
+                // Fetch 4 pages (800 items max limit for responsiveness)
+                const PAGES_TO_FETCH = 4; 
+                const PER_PAGE = 200;
+                let newPoints = [];
+                const fetchPromises = [];
+                
+                for (let page = 1; page <= PAGES_TO_FETCH; page++) {
+                    const url = `https://api.inaturalist.org/v1/observations?taxon_id=${taxonId}&nelat=${NYC_BOUNDS.nelat}&nelng=${NYC_BOUNDS.nelng}&swlat=${NYC_BOUNDS.swlat}&swlng=${NYC_BOUNDS.swlng}&has_geo=true&quality_grade=research&per_page=${PER_PAGE}&page=${page}${dateParams}`;
+                    fetchPromises.push(
+                        fetch(url).then(response => {
+                            if (!response.ok) throw new Error(`HTTP error!`);
+                            return response.json();
+                        })
+                    );
+                }
+
+                const results = await Promise.all(fetchPromises);
+                
+                results.forEach(res => {
+                    if (res.results) {
+                        res.results.forEach(obs => {
+                            if (obs.location) {
+                                const coords = obs.location.split(',');
+                                newPoints.push([parseFloat(coords[0]), parseFloat(coords[1]), 1.0]);
+                            }
+                        });
+                    }
+                });
+
+                // Save to cache
+                dataCache[cacheKey] = newPoints;
+
+                // Ensure the user hasn't hovered away while we were downloading
+                const currentActiveId = hoveredTaxonId !== null ? hoveredTaxonId : selectedTaxonId;
+                if (currentActiveId === taxonId) {
+                    currentPoints = newPoints;
+                    renderHeatmap();
+                    ui.obsCount.innerText = currentPoints.length.toLocaleString();
+                }
+
+            } catch (error) {
+                console.error("Map data fetch error:", error);
+                const currentActiveId = hoveredTaxonId !== null ? hoveredTaxonId : selectedTaxonId;
+                if (currentActiveId === taxonId) {
+                    ui.errorBanner.innerText = `Data load failed. API limits may be temporarily reached.`;
+                    ui.errorBanner.classList.remove('hidden');
+                    ui.obsCount.innerText = 'Error';
+                }
+            }
+        }
+
+        // --- 5. Render Map ---
+        function renderHeatmap() {
+            if (heatLayer) map.removeLayer(heatLayer);
+
+            // Hardcoded spread values (radius 15, blur 18) for optimal visualization
+            heatLayer = L.heatLayer(currentPoints, {
+                radius: 15,
+                blur: 18,
+                maxZoom: 14,
+                max: 1.0,
+                gradient: { 0.2: '#0022ff', 0.4: '#00ffff', 0.6: '#00ff00', 0.8: '#ffff00', 1.0: '#ff0000' }
+            }).addTo(map);
+        }
+
+        // --- 6. Initial Kickoff ---
+        window.onload = async () => {
+            // PWA Manifest Injection (Dynamically generated to keep everything in one file)
+            const manifestJSON = {
+                "name": "Where bird?",
+                "short_name": "Where bird?",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#0b0f19",
+                "theme_color": "#0b0f19",
+                "icons": [{
+                    "src": "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232563eb%22/><text x=%2250%22 y=%2250%22 font-size=%2260%22 text-anchor=%22middle%22 dy=%22.35em%22>🐦</text></svg>",
+                    "sizes": "512x512",
+                    "type": "image/svg+xml"
+                }]
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifestJSON)], {type: 'application/manifest+json'});
+            const manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            manifestLink.href = URL.createObjectURL(manifestBlob);
+            document.head.appendChild(manifestLink);
+
+            // Attach listener to the static "All Birds" item
+            attachLegendListener(document.querySelector('.legend-item[data-id="3"]'));
+            
+            // Load list and initial map
+            updateLegendStyles();
+            await fetchTopBirds(1);
+            loadMapData(selectedTaxonId, selectedTaxonName);
+        };
+    </script>
+</body>
+</html>
